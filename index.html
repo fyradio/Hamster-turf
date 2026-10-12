@@ -32,6 +32,7 @@ canvas#glc{position:fixed;left:0;top:0;display:none;pointer-events:none;z-index:
 canvas#cv{position:fixed;left:0;top:0;display:none;touch-action:none;z-index:2}
 .screen{position:absolute;inset:0;display:none;flex-direction:column;gap:14px;padding-inline:16px;padding-top:calc(var(--sat,0px) + 14px);padding-bottom:calc(var(--sab,0px) + 14px);overflow-y:auto;overflow-x:hidden;touch-action:pan-y;z-index:2}
 .screen.on{display:flex}
+.screen>*{flex-shrink:0}
 .card{background:var(--white);border:3px solid var(--ink);border-radius:18px;box-shadow:0 5px 0 var(--ink);padding:12px 14px;min-width:0}
 .btn{font-size:20px;font-weight:900;border:3px solid var(--ink);background:var(--white);border-radius:16px;padding:12px 18px;box-shadow:0 5px 0 var(--ink);cursor:pointer;transition:transform .06s,box-shadow .06s}
 .btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink)}
@@ -88,6 +89,14 @@ canvas#cv{position:fixed;left:0;top:0;display:none;touch-action:none;z-index:2}
 .hc.lock{background:var(--lock);box-shadow:none;cursor:default}
 .hc.lock canvas{filter:grayscale(1) brightness(.55)}
 
+/* collection extras */
+.hc .rar{display:inline-block;color:#fff;font-size:11px;font-weight:900;border-radius:7px;padding:1px 7px;margin-top:2px}
+.hc.lock{cursor:pointer}
+.hc.lock canvas{filter:grayscale(1) brightness(.6)}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;padding-bottom:16px}
+.pager button:disabled{opacity:.4;box-shadow:none}
+.pips{flex-wrap:wrap}
+.pips i{width:11px}
 /* naming */
 .pv{flex:1;min-width:0}
 .namerow{display:flex;gap:8px;margin-top:8px;align-items:center}
@@ -139,7 +148,7 @@ input{-webkit-user-select:text;user-select:text}
 <canvas id="cv"></canvas>
 
 <section id="s-menu" class="screen on">
-  <div class="ver">v0.6</div>
+  <div class="ver">v0.7</div>
   <div class="mid">
     <div class="logo">倉鼠圈地</div>
     <div class="sub">HAMSTER TURF</div>
@@ -167,10 +176,13 @@ input{-webkit-user-select:text;user-select:text}
 </section>
 
 <section id="s-coll" class="screen">
-  <div class="head"><button class="btn sm" data-go="s-menu">‹ 返回</button><h1>倉鼠與造型</h1></div>
+  <div class="head"><button class="btn sm" data-go="s-menu">‹ 返回</button><h1>倉鼠與造型</h1><div class="coins" id="collCoins"></div></div>
   <div class="card prev"><canvas id="prevC" width="100" height="100"></canvas><div class="pv"><div id="prevName"></div><small id="prevSub"></small><div class="namerow"><input id="nameIn" type="text" maxlength="6" placeholder="替牠取名字" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn sm" id="nameDice" aria-label="隨機取名">🎲</button></div><div class="chips" id="nameChips"></div></div></div>
   <div class="seg" id="collTabs"><button data-t="ham" class="on">倉鼠</button><button data-t="cos">造型</button></div>
+  <div class="seg" id="collFilter"><button data-f="all" class="on">全部</button><button data-f="own">已擁有</button><button data-f="lock">未擁有</button></div>
+  <div class="shopnote" id="collMsg">每場勝利最多可獲得 3 個隨機的倉鼠或造型，也能用金幣購買。</div>
   <div class="cards" id="collGrid"></div>
+  <div class="pager"><button class="btn sm" id="pgPrev">‹ 上一頁</button><span id="pgInfo"></span><button class="btn sm" id="pgNext">下一頁 ›</button></div>
 </section>
 
 <section id="s-result" class="screen">
@@ -180,7 +192,7 @@ input{-webkit-user-select:text;user-select:text}
     <div class="rescoin" id="resCoin"></div>
     <div id="resRank" style="margin-top:10px"></div>
   </div>
-  <div class="card" id="resNewCard" style="display:none"><div style="font-size:16px;margin-bottom:8px">新解鎖！</div><div class="newbox" id="resNew"></div></div>
+  <div class="card" id="resNewCard" style="display:none"><div style="font-size:16px;margin-bottom:8px">勝利獎勵／新解鎖！</div><div class="newbox" id="resNew"></div></div>
   <div class="row">
     <button class="btn pri" id="bAgain">再玩一次</button>
     <button class="btn" id="bScenes">選場景</button>
@@ -199,19 +211,20 @@ input{-webkit-user-select:text;user-select:text}
 <script>
 'use strict';
 const $=s=>document.querySelector(s);
-const VER='v0.6';
+const VER='v0.7';
 const TEST=/test/i.test(location.hash);
 const SAVE_KEY='hamsterTurf.save';
 const INK='#2a2438';
 const FONT="'Zen Maru Gothic','Fredoka','PingFang TC','Noto Sans TC',sans-serif";
 
 /* ---------- save (old saves stay readable: defaults are merged under whatever is stored) ---------- */
-function defSave(){return{v:1,plays:0,kills:0,wins:0,hardWins:0,bestPct:0,reach:1,sceneBest:{},ham:'golden',cos:'none',seen:['golden','none'],muted:false,diff:1,coins:0,up:{},names:{}};}
+function defSave(){return{v:1,plays:0,kills:0,wins:0,hardWins:0,bestPct:0,reach:1,sceneBest:{},ham:'golden',cos:'none',seen:['golden','none'],muted:false,diff:1,coins:0,up:{},names:{},own:{}};}
 function loadSave(){const s=defSave();try{const r=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(r&&typeof r==='object')Object.assign(s,r);}catch(e){}return s;}
 let save=loadSave();
 if(!save.up||typeof save.up!=='object')save.up={};
 if(typeof save.coins!=='number')save.coins=0;
 if(!save.names||typeof save.names!=='object')save.names={};
+if(!save.own||typeof save.own!=='object')save.own={};
 if(TEST&&save.coins<5000)save.coins=5000;
 function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}}
 
@@ -224,18 +237,21 @@ function pickPuns(n,excl){
 }
 const myName=hid=>(save.names[hid]||'').trim();
 
-/* ---------- shop: 9 permanent upgrades bought with coins ---------- */
+/* ---------- shop: 9 permanent upgrades, every one up to Lv.10 ---------- */
+const upCost=(base,l)=>Math.round(base*(1+.5*l+.08*l*l)/5)*5;
+const magStart=l=>l?2+2*l:0, spdStart=l=>l?2+l:0, shieldHits=l=>l?1+Math.floor(l/3.4):1;
 const UPG=[
-{id:'boots',icon:'👟',name:'疾風鞋',max:5,cost:[60,100,150,220,320],desc:l=>l?`基礎速度 +${l*5}%`:'基礎速度提升',nxt:l=>`+${(l+1)*5}%`},
-{id:'mag0',icon:'🧲',name:'開局磁鐵',max:3,cost:[80,140,220],desc:l=>l?`開局自帶磁鐵 ${[0,6,10,15][l]} 秒`:'開局自帶磁鐵',nxt:l=>`${[0,6,10,15][l+1]} 秒`},
-{id:'shd0',icon:'🛡️',name:'開局護盾',max:1,cost:[150],desc:l=>l?'開局自帶護盾':'開局自帶護盾',nxt:l=>'擋一次致命撞擊'},
-{id:'spd0',icon:'⚡',name:'開局衝刺',max:3,cost:[70,120,190],desc:l=>l?`開局加速 ${[0,3,5,8][l]} 秒`:'開局自帶加速',nxt:l=>`${[0,3,5,8][l+1]} 秒`},
-{id:'land',icon:'🌱',name:'大地盤',max:4,cost:[60,110,170,250],desc:l=>l?`出生領地 +${l*.5} 格半徑`:'出生領地變大',nxt:l=>`+${(l+1)*.5} 格半徑`},
-{id:'dur',icon:'⏳',name:'道具延長',max:4,cost:[70,120,180,260],desc:l=>l?`道具效果時間 +${l*20}%`:'道具持續更久',nxt:l=>`+${(l+1)*20}%`},
-{id:'luck',icon:'🍀',name:'幸運草',max:3,cost:[60,110,180],desc:l=>l?`道具出現更頻繁（${l} 級）`:'道具更常出現',nxt:l=>`${l+1} 級`},
-{id:'coin',icon:'💰',name:'金幣大亨',max:5,cost:[50,90,140,200,280],desc:l=>l?`金幣獎勵 +${l*15}%`:'每局金幣更多',nxt:l=>`+${(l+1)*15}%`},
-{id:'rez',icon:'🪽',name:'復活護符',max:3,cost:[60,110,180],desc:l=>l?`重生快 ${(l*.5).toFixed(1)} 秒、無敵久 ${(l*.5).toFixed(1)} 秒`:'重生更快、無敵更久',nxt:l=>`快 ${((l+1)*.5).toFixed(1)} 秒`}
+{id:'boots',icon:'👟',name:'疾風鞋',max:10,base:50,desc:l=>l?`基礎速度 +${l*4}%`:'基礎速度提升',nxt:l=>`+${(l+1)*4}%`},
+{id:'mag0',icon:'🧲',name:'開局磁鐵',max:10,base:60,desc:l=>l?`開局自帶磁鐵 ${magStart(l)} 秒`:'開局自帶磁鐵',nxt:l=>`${magStart(l+1)} 秒`},
+{id:'shd0',icon:'🛡️',name:'護盾強化',max:10,base:90,desc:l=>l?`開局自帶 ${shieldHits(l)} 層護盾`:'開局自帶護盾',nxt:l=>`${shieldHits(l+1)} 層護盾`},
+{id:'spd0',icon:'⚡',name:'開局衝刺',max:10,base:50,desc:l=>l?`開局加速 ${spdStart(l)} 秒`:'開局自帶加速',nxt:l=>`${spdStart(l+1)} 秒`},
+{id:'land',icon:'🌱',name:'大地盤',max:10,base:45,desc:l=>l?`出生領地半徑 +${(l*.3).toFixed(1)} 格`:'出生領地變大',nxt:l=>`+${((l+1)*.3).toFixed(1)} 格`},
+{id:'dur',icon:'⏳',name:'道具延長',max:10,base:55,desc:l=>l?`道具效果時間 +${l*10}%`:'道具持續更久',nxt:l=>`+${(l+1)*10}%`},
+{id:'luck',icon:'🍀',name:'幸運草',max:10,base:45,desc:l=>l?`道具出現更頻繁（${l} 級）`:'道具更常出現',nxt:l=>`${l+1} 級`},
+{id:'coin',icon:'💰',name:'金幣大亨',max:10,base:40,desc:l=>l?`金幣獎勵 +${l*10}%`:'每局金幣更多',nxt:l=>`+${(l+1)*10}%`},
+{id:'rez',icon:'🪽',name:'復活護符',max:10,base:50,desc:l=>l?`重生快 ${(l*.15).toFixed(2)} 秒、無敵久 ${(l*.2).toFixed(1)} 秒`:'重生更快、無敵更久',nxt:l=>`快 ${((l+1)*.15).toFixed(2)} 秒`}
 ];
+UPG.forEach(u=>{u.cost=Array.from({length:u.max},(_,l)=>upCost(u.base,l));});
 const upLv=id=>Math.min((UPG.find(u=>u.id===id)||{max:0}).max,save.up[id]|0);
 function buyUpg(id){
   const u=UPG.find(x=>x.id===id),l=upLv(id);
@@ -247,6 +263,8 @@ function buyUpg(id){
 /* ---------- hamsters & costumes ----------
    tint = territory colour, acc = pattern colour, tp = territory pattern id used by the shader,
    pat = pattern painted on the hamster's own fur */
+const RAR=[{k:'C',n:'普通',c:'#8aa0b8',p:150,w:60},{k:'R',n:'稀有',c:'#4c8bf5',p:350,w:25},{k:'E',n:'史詩',c:'#9b72e0',p:800,w:11},{k:'L',n:'傳說',c:'#f0a000',p:1800,w:4}];
+const rarOf=it=>RAR.find(r=>r.k===it.rar)||RAR[0];
 const HAMS=[
 {id:'golden',name:'小金',full:'黃金鼠',tint:'#f5a524',acc:'#b86a00',tp:0,body:'#f2b35a',belly:'#ffe7b8',ear:'#f2b35a',pat:'',req:null},
 {id:'milktea',name:'奶茶',full:'奶茶鼠',tint:'#c99b78',acc:'#f6e2cd',tp:1,body:'#d9b38c',belly:'#f6e6d2',ear:'#d9b38c',pat:'',req:{s:'plays',n:2}},
@@ -275,11 +293,46 @@ const COS=[
 {id:'crown',name:'皇冠',req:{s:'wins',n:1}},
 {id:'helmet',name:'太空盔',req:{s:'hardWins',n:1}}
 ];
+const ORIG_RAR={golden:'C',milktea:'C',panda:'R',sakura:'R',silver:'R',pudding:'R',matcha:'E',calico:'R',blueberry:'R',taro:'E',bear:'E',rainbow:'L',
+ none:'C',straw:'C',bow:'C',chef:'R',sunflower:'R',bowtie:'C',shades:'R',phones:'C',pirate:'E',wizard:'E',crown:'L',helmet:'L'};
+HAMS.forEach(h=>{h.rar=ORIG_RAR[h.id];});COS.forEach(c=>{c.rar=ORIG_RAR[c.id];});
+
+/* ---------- 338 more hamsters, generated: 45 colours x 8 coat patterns (seeded, so every device gets the same ones) ---------- */
+(function genHams(){
+  const COLS=[['奶油','#f7e3b5'],['焦糖','#c98b4a'],['可可','#8a5a44'],['蜜桃','#ffb8a0'],['檸檬','#fbe55a'],['葡萄','#9a6bd0'],['海鹽','#dfeaf2'],['雪白','#ffffff'],['墨黑','#4a4458'],['肉桂','#b3673a'],
+   ['栗子','#8b5a3c'],['南瓜','#f2994a'],['草莓','#f06b86'],['棉花','#fde4ee'],['薄荷','#9ee6c8'],['天空','#8fd0f5'],['海洋','#4aa3d6'],['玫瑰','#e8769d'],['薰衣','#bfa8f0'],['豆沙','#b88d85'],
+   ['咖啡','#6f4a3a'],['煙灰','#a8a6b4'],['銀月','#cfd6e4'],['金沙','#e6c36a'],['橘子','#f5a04a'],['蘋果','#7fcf6a'],['青檸','#c4e86a'],['湖水','#66c9c1'],['紫藤','#b08be0'],['莓果','#c8446f'],
+   ['楓糖','#d6894a'],['麥穗','#e0c070'],['乳酪','#f9e08a'],['杏仁','#e8c9a0'],['暮光','#8a7cc4'],['晨曦','#ffc9a8'],['星河','#5a63c8'],['月光','#ece8c4'],['火焰','#f0663a'],['冰晶','#bfe8f5'],
+   ['森林','#5b9a5f'],['沙丘','#d9b98a'],['夜空','#47558a'],['櫻桃','#e0405a'],['芒果','#ffc83d']];
+  const PATS=[['','鼠'],['dots','點點'],['stripes','條紋'],['cap','帽帽'],['patch','補丁'],['half','雙色'],['belt','腰帶'],['freckle','雀斑']];
+  let s=20261012;const R=()=>{s=(s+0x6D2B79F5)|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  const h2r=h=>{const n=parseInt(h.slice(1),16);return[n>>16,(n>>8)&255,n&255];};
+  const r2h=(r,g,b)=>'#'+[r,g,b].map(v=>('0'+Math.max(0,Math.min(255,Math.round(v))).toString(16)).slice(-2)).join('');
+  const toHsl=h=>{const[r,g,b]=h2r(h).map(v=>v/255),mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let hh=0,ss=0;if(mx!==mn){const d=mx-mn;ss=l>.5?d/(2-mx-mn):d/(mx+mn);hh=mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4;hh/=6;}return[hh,ss,l];};
+  const hue2=(p,q,t)=>{if(t<0)t+=1;if(t>1)t-=1;return t<1/6?p+(q-p)*6*t:t<.5?q:t<2/3?p+(q-p)*(2/3-t)*6:p;};
+  const fromHsl=(h,s,l)=>{h=((h%1)+1)%1;if(s===0)return r2h(l*255,l*255,l*255);const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;return r2h(hue2(p,q,h+1/3)*255,hue2(p,q,h)*255,hue2(p,q,h-1/3)*255);};
+  const mixh=(a,b,t)=>{const x=h2r(a),y=h2r(b);return r2h(x[0]+(y[0]-x[0])*t,x[1]+(y[1]-x[1])*t,x[2]+(y[2]-x[2])*t);};
+  const combos=[];COLS.forEach(c=>PATS.forEach(p=>combos.push([c,p])));
+  for(let i=combos.length-1;i>0;i--){const j=(R()*(i+1))|0;[combos[i],combos[j]]=[combos[j],combos[i]];}
+  combos.slice(0,338).forEach((cp,i)=>{
+    const[col,pat]=cp,body=col[1],[hh,ss,ll]=toHsl(body);
+    const c2=ll>.7?fromHsl(hh+R()*.3-.15,Math.min(1,ss+.35),.5+R()*.08):fromHsl(hh+R()*.3-.15,Math.min(1,ss+.2),Math.min(.86,ll+.32));
+    const belly=mixh(body,'#ffffff',.6),ear=mixh(body,pat[0]==='cap'?c2:'#ff9fb0',pat[0]==='cap'?.7:.18);
+    const tl=Math.max(.38,Math.min(.6,ll)),ts=ss<.12?ss:Math.max(.5,ss),tint=ss<.12?fromHsl(hh,0,Math.min(.5,Math.max(.32,ll))):fromHsl(hh,ts,tl);
+    const rr=R(),rar=rr<.55?'C':rr<.82?'R':rr<.95?'E':'L';
+    HAMS.push({id:'g'+(i+1),gen:true,name:col[0]+(pat[1]==='鼠'?'鼠':pat[1]),full:col[0]+(pat[1]==='鼠'?'鼠':pat[1]),tint,acc:mixh(tint,'#ffffff',.55),tp:(R()*12)|0,body,belly,ear,pat:pat[0],c2,req:null,rar});
+  });
+})();
+const HAM_MAP=new Map(HAMS.map(h=>[h.id,h]));
+const dropWeights=it=>rarOf(it).w;
+const priceOf=it=>rarOf(it).p;
+
 const STAT_LABEL={plays:n=>`遊玩 ${n} 場`,kills:n=>`累計擊倒 ${n} 次`,bestPct:n=>`單局佔地 ${n}%`,wins:n=>`拿下第一名 ${n} 次`,hardWins:n=>`困難模式第一名 ${n} 次`};
-const isOpen=it=>TEST||!it.req||(save[it.req.s]||0)>=it.req.n;
+const isOpen=it=>TEST||!!save.own[it.id]||(!it.gen&&(!it.req||(save[it.req.s]||0)>=it.req.n));
 const reqText=it=>it.req?STAT_LABEL[it.req.s](it.req.n):'';
+function buyItem(it){const p=priceOf(it);if(isOpen(it)||save.coins<p)return false;save.coins-=p;save.own[it.id]=true;persist();return true;}
 const reqProg=it=>it.req?`${Math.min(Math.floor(save[it.req.s]||0),it.req.n)}/${it.req.n}`:'';
-const hamById=id=>HAMS.find(h=>h.id===id)||HAMS[0];
+const hamById=id=>HAM_MAP.get(id)||HAMS[0];
 const cosById=id=>COS.find(c=>c.id===id)||COS[0];
 
 /* ---------- 2.5D sprites: shaded 'clay' hamsters, three views (front / back / side), drawn once ---------- */
@@ -314,6 +367,14 @@ function paintHam(g,h,cid,view){
     g.save();shape(cx,cy,view==='s'?36:39,view==='s'?32:35);g.clip();
     if(h.pat==='calico'){g.fillStyle='#ee9b4a';g.beginPath();g.arc(cx-28,cy-24,22,0,7);g.fill();g.fillStyle='#8a5a3b';g.beginPath();g.arc(cx+32,cy-28,17,0,7);g.fill();}
     if(h.pat==='pudding'){g.fillStyle='#c58a3e';g.beginPath();g.ellipse(cx,cy-34,34,15,0,0,7);g.fill();}
+    const c2=h.c2||'#c58a3e';
+    if(h.pat==='dots'){g.fillStyle=c2;[[-22,-20,6],[8,-26,5],[26,-8,6],[-30,4,5],[-6,-4,5],[14,14,6],[-18,22,5],[30,22,4]].forEach(p=>{g.beginPath();g.arc(cx+p[0],cy+p[1],p[2],0,7);g.fill();});}
+    if(h.pat==='stripes'){g.fillStyle=c2;g.save();g.translate(cx,cy);g.rotate(-.5);for(let k=-3;k<=3;k+=2)g.fillRect(-60,k*10-4,120,8);g.restore();}
+    if(h.pat==='cap'){g.fillStyle=c2;g.beginPath();g.ellipse(cx,cy-34,34,15,0,0,7);g.fill();}
+    if(h.pat==='patch'){g.fillStyle=c2;g.beginPath();g.arc(cx-22,cy-18,20,0,7);g.fill();g.beginPath();g.arc(cx+30,cy+12,9,0,7);g.fill();}
+    if(h.pat==='half'){g.fillStyle=c2;g.fillRect(cx,0,60,100);}
+    if(h.pat==='belt'){g.fillStyle=c2;g.fillRect(0,cy-6,100,12);}
+    if(h.pat==='freckle'){g.fillStyle=c2;[[-27,8],[-22,12],[-31,13],[27,8],[22,12],[31,13],[-4,-12],[4,-14],[0,-8]].forEach(p=>{g.beginPath();g.arc(cx+p[0],cy+p[1],1.9,0,7);g.fill();});}
     if(h.pat==='rainbow'){['#ff5d6c','#ffa94d','#ffe066','#69db7c','#4dabf7'].forEach((c,i)=>{g.fillStyle=c;g.fillRect(0,cy-35+i*5,100,5.2);});}
     g.restore();
   };
@@ -535,8 +596,8 @@ function setOwner(i,id){
   if(xx<g.dx0)g.dx0=xx;if(xx>g.dx1)g.dx1=xx;if(yy<g.dy0)g.dy0=yy;if(yy>g.dy1)g.dy1=yy;
 }
 function pct(e){return G.cnt[e.id]/G.playable*100;}
-function speedOf(e){return(e.isP?PLAYER_SP*(1+.05*upLv('boots')):G.D.sp)*(e.speedT>0?1.7:1);}
-const durMul=e=>e.isP?1+.2*upLv('dur'):1;
+function speedOf(e){return(e.isP?PLAYER_SP*(1+.04*upLv('boots')):G.D.sp)*(e.speedT>0?1.7:1);}
+const durMul=e=>e.isP?1+.1*upLv('dur'):1;
 
 function newGame(si,diff){
   const S=SCENES[si],D=DIFFS[diff],W=S.w,H=S.h,GW=W*K,GH=H*K,N=GW*GH;
@@ -551,11 +612,24 @@ function newGame(si,diff){
   g.playable=pc;
   const pool=HAMS.filter(h=>h.id!==save.ham);
   for(let i=pool.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[pool[i],pool[j]]=[pool[j],pool[i]];}
+  const pickOpp=(n)=>{
+    const me=hexRgb(hamById(save.ham).tint),got=[],cd=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+    for(const th of[95,70,45,20,-1]){
+      for(const h of pool){
+        if(got.length>=n)break;if(got.indexOf(h)>=0)continue;
+        const rg=hexRgb(h.tint);
+        if(cd(rg,me)>th&&got.every(o=>cd(hexRgb(o.tint),rg)>th))got.push(h);
+      }
+      if(got.length>=n)break;
+    }
+    return got;
+  };
   const nOpp=Math.min(7,D.opp+(si>=7?1:0)+(si>=14?1:0));
+  const opps=pickOpp(nOpp);
   const seq=PSEQ[diff],off=(Math.random()*seq.length)|0;
   const pname=myName(save.ham),oppNames=pickPuns(nOpp,pname);
   const list=[{h:hamById(save.ham),cos:save.cos,isP:true,name:pname||'你'}];
-  for(let k=0;k<nOpp;k++)list.push({h:pool[k],cos:COS[(Math.random()*COS.length)|0].id,isP:false,name:oppNames[k],pers:seq[(k+off)%seq.length]});
+  for(let k=0;k<nOpp;k++)list.push({h:opps[k],cos:COS[(Math.random()*COS.length)|0].id,isP:false,name:oppNames[k],pers:seq[(k+off)%seq.length]});
   g.cnt=new Int32Array(list.length+1);
   g.ents=list.map((o,i)=>{
     const tint=o.h.tint;
@@ -595,7 +669,7 @@ function placeEnt(e,first){
     if(ok)pos=[x,y];
   }
   if(!pos){pos=[W/2,H/2];for(let j=-4;j<=4;j++)for(let i=-4;i<=4;i++){const xx=(W/2|0)+i,yy=(H/2|0)+j;if(xx>0&&yy>0&&xx<W-1&&yy<H-1){g.wall[yy*W+xx]=0;for(let b=0;b<K*K;b++)g.wallF[(yy*K+(b>>1))*g.GW+xx*K+(b&1)]=0;}}}
-  const [x,y]=pos,R=3.0+(e.isP?.5*upLv('land'):0);
+  const [x,y]=pos,R=3.0+(e.isP?.3*upLv('land'):0);
   let x0=Math.floor((x-R)*K),x1=Math.floor((x+R)*K);if(!g.wrap){x0=Math.max(0,x0);x1=Math.min(g.GW-1,x1);}
   const y0=Math.max(0,((y-R)*K)|0),y1=Math.min(g.GH-1,((y+R)*K)|0);
   for(let yy=y0;yy<=y1;yy++)for(let xx=x0;xx<=x1;xx++){
@@ -607,10 +681,10 @@ function placeEnt(e,first){
   e.alive=true;e.trail=[];e.tcells=[];e.tl=0;e.seq=1;e.shield=0;e.shT=0;e.speedT=0;e.magT=0;
   if(e.ai){e.ai.mode='idle';e.ai.plan=[];e.ai.target=null;}
   if(first&&e.isP){
-    const m=upLv('mag0'),s=upLv('spd0');
-    if(m)e.magT=[0,6,10,15][m];
-    if(s)e.speedT=[0,3,5,8][s];
-    if(upLv('shd0')){e.shield=1;e.shT=20;}
+    const m=upLv('mag0'),s=upLv('spd0'),sh=upLv('shd0');
+    if(m)e.magT=magStart(m);
+    if(s)e.speedT=spdStart(s);
+    if(sh){e.shield=shieldHits(sh);e.shT=20+sh*2;}
   }
   burst(x,y,e.c.fill,14);
 }
@@ -674,14 +748,14 @@ function moveSub(e,dt){
 function kill(v,k){
   if(!v.alive)return false;
   if(v.invT>0)return false;
-  if(v.shield>0){v.shield=0;v.shT=0;v.invT=1.4;burst(v.x,v.y,'#4cc9f0',26);burst(v.x,v.y,'#ffffff',10);G.rips.push({x:v.x,y:v.y,t:0});if(v.isP)toast('護盾擋住了！','#9be7ff');return false;}
+  if(v.shield>0){v.shield--;if(v.shield<=0)v.shT=0;v.invT=1.4;burst(v.x,v.y,'#4cc9f0',26);burst(v.x,v.y,'#ffffff',10);G.rips.push({x:v.x,y:v.y,t:0});if(v.isP)toast('護盾擋住了！','#9be7ff');return false;}
   const g=G,{owner,N}=g;
   v.alive=false;clearTrail(v);
   const heir=(k&&k!==v&&k.alive)?k.id:0;let got=0;
   for(let i=0;i<N;i++)if(owner[i]===v.id){setOwner(i,heir);got++;}
   if(heir&&got>20){burst(k.x,k.y,k.c.fill,20);g.rips.push({x:v.x,y:v.y,t:0,c:k.c.fill});if(k.isP){pop(k.x,k.y-1,'+'+(got/g.playable*100).toFixed(1)+'%','#fff');}const p=pct(k);if(p>k.peak)k.peak=p;}
   burst(v.x,v.y,v.c.fill,26);
-  v.respT=v.isP?Math.max(.6,2-.5*upLv('rez')):3;v.deaths++;
+  v.respT=v.isP?Math.max(.5,2-.15*upLv('rez')):3;v.deaths++;
   if(k&&k!==v){
     k.kills++;
     if(k.isP){sfx.kill();toast('擊倒了 '+v.name+'！','#ffe066');onPlayerKill();}
@@ -752,7 +826,7 @@ const ITEM_NAME={speed:'加速',shield:'護盾',magnet:'磁鐵'};
 function pickup(e,it){
   G.items.splice(G.items.indexOf(it),1);
   const dm=durMul(e);
-  if(it.t==='speed')e.speedT=7*dm;else if(it.t==='shield'){e.shield=1;e.shT=20*dm;}else e.magT=12*dm;
+  if(it.t==='speed')e.speedT=7*dm;else if(it.t==='shield'){e.shield=e.isP?Math.max(e.shield,shieldHits(upLv('shd0'))):1;e.shT=20*dm;}else e.magT=12*dm;
   const col=it.t==='speed'?'#ffd23f':it.t==='shield'?'#4cc9f0':'#ff5d8f';
   burst(e.x,e.y,'#ffffff',8);burst(e.x,e.y,col,18);G.rips.push({x:e.x,y:e.y,t:0});
   if(e.isP)pop(e.x,e.y,ITEM_NAME[it.t],col);
@@ -760,7 +834,7 @@ function pickup(e,it){
 }
 
 /* ---------- main update ---------- */
-function respawn(e){placeEnt(e,false);e.invT=2+(e.isP?.5*upLv('rez'):0);}
+function respawn(e){placeEnt(e,false);e.invT=2+(e.isP?.2*upLv('rez'):0);}
 
 function update(dt){
   const g=G;g.t+=dt;
@@ -787,7 +861,7 @@ function update(dt){
     const p=pct(e);if(p>e.peak)e.peak=p;
   }
   g.itemT-=dt;
-  if(g.itemT<=0){g.itemT=(2.5+Math.random()*2)*(1-.18*upLv('luck'));if(g.items.length<5+upLv('luck')+(g.playable/(900*K*K)|0))spawnItem();}
+  if(g.itemT<=0){g.itemT=(2.5+Math.random()*2)*(1-.06*upLv('luck'));if(g.items.length<5+(upLv('luck')>>1)+(g.playable/(900*K*K)|0))spawnItem();}
   for(const e of g.ents){
     if(!e.alive)continue;
     for(let k=g.items.length-1;k>=0;k--){
@@ -1230,6 +1304,7 @@ function drawHamster(e,g){
     cx.globalAlpha=low?.35:1;cx.fillStyle=gr;cx.beginPath();cx.arc(0,cyy,R,0,7);cx.fill();
     cx.lineWidth=2.5;cx.strokeStyle='rgba(190,240,255,.95)';cx.stroke();
     cx.lineWidth=3;cx.strokeStyle='rgba(255,255,255,.85)';cx.beginPath();cx.arc(0,cyy,R*.78,3.5+g.t*1.5,4.4+g.t*1.5);cx.stroke();
+    if(e.shield>1){cx.globalAlpha=1;T('×'+e.shield,R*.55,cyy-R*.75,Math.max(12,size*.28),'#bff',  'center',3);}
     cx.restore();
   }
   if(e.speedT>0){
@@ -1503,7 +1578,7 @@ function drawHUD(){
   // power-ups
   let cxp=left+16;const cyp=VH-SAB-30-28;
   const dmH=durMul(pl);
-  for(const c of[['speed',pl.speedT,Math.max(7*dmH,[0,3,5,8][upLv('spd0')])],['shield',pl.shield>0?pl.shT:0,20*dmH],['magnet',pl.magT,Math.max(12*dmH,[0,6,10,15][upLv('mag0')])]]){
+  for(const c of[['speed',pl.speedT,Math.max(7*dmH,spdStart(upLv('spd0')))],['shield',pl.shield>0?pl.shT:0,Math.max(20*dmH,20+upLv('shd0')*2)],['magnet',pl.magT,Math.max(12*dmH,magStart(upLv('mag0')))]]){
     if(c[1]<=0)continue;
     drawIcon(c[0],cxp,cyp,15,true);
     cx.fillStyle='rgba(28,24,48,.55)';cx.fillRect(cxp-15,cyp+19,30,5);cx.fillStyle='#fff';cx.fillRect(cxp-15,cyp+19,30*Math.max(0,Math.min(1,c[1]/c[2])),5);
@@ -1602,21 +1677,33 @@ function startGame(si,diff){
 function stopGame(){running=false;paused=false;$('#pause').classList.remove('on');}
 
 /* ---------- finish & results ---------- */
+function rollDrops(diff){
+  let n=1;if(Math.random()<.4+.1*diff){n=2;if(Math.random()<.3+.1*diff)n=3;}
+  const out=[];
+  for(let k=0;k<n;k++){
+    const hp=HAMS.filter(h=>!isOpen(h)&&out.indexOf(h)<0),cp=COS.filter(c=>!isOpen(c)&&out.indexOf(c)<0);
+    let pool=Math.random()<.65?hp:cp;if(!pool.length)pool=hp.length?hp:cp;if(!pool.length)break;
+    let tot=0;pool.forEach(it=>tot+=dropWeights(it));let r=Math.random()*tot,pick=pool[pool.length-1];
+    for(const it of pool){r-=dropWeights(it);if(r<=0){pick=it;break;}}
+    out.push(pick);
+  }
+  return out;
+}
 function unlockedIds(){return HAMS.filter(isOpen).map(h=>h.id).concat(COS.filter(isOpen).map(c=>c.id));}
 function finishGame(){
   const g=G,pl=g.player;
   const rank=g.ents.slice().sort((a,b)=>g.cnt[b.id]-g.cnt[a.id]);
   const place=rank.indexOf(pl)+1,p=pct(pl),win=place===1;
-  const placeB={1:40,2:20,3:10}[place]||0,dmul=[1,1.3,1.7][g.diff];
-  const earned=Math.round((20+p*1.6*Math.max(1,Math.sqrt(g.playable/3000))+pl.kills*10+placeB)*dmul*(1+.15*upLv('coin')));
+  const placeB={1:60,2:30,3:15}[place]||0,dmul=[1,1.3,1.7][g.diff];
+  const earned=Math.round((30+p*2.2*Math.max(1,Math.sqrt(g.playable/3000))+pl.kills*12+placeB)*dmul*(1+.1*upLv('coin')));
   save.coins+=earned;
   save.plays++;save.kills+=pl.kills;save.bestPct=Math.max(save.bestPct,Math.round(p*10)/10);
-  if(win){save.wins++;if(g.diff===2)save.hardWins++;}
+  if(win){save.wins++;if(g.diff===2)save.hardWins++;rollDrops(g.diff).forEach(it=>{save.own[it.id]=true;});}
   const key=g.si+'_'+g.diff,sb=save.sceneBest[key]||{pct:0,win:false};
   save.sceneBest[key]={pct:Math.max(sb.pct,Math.round(p*10)/10),win:sb.win||win};
   const newScene=g.si+2>save.reach&&g.si+1<SCENES.length;
   save.reach=Math.max(save.reach,g.si+2);
-  const nowIds=unlockedIds(),fresh=nowIds.filter(id=>save.seen.indexOf(id)<0);
+  const nowIds=unlockedIds(),fresh=TEST?[]:nowIds.filter(id=>save.seen.indexOf(id)<0).slice(0,9);
   save.seen=Array.from(new Set(save.seen.concat(nowIds)));
   persist();stopGame();
   $('#resTitle').textContent=place===1?'第 1 名！':'第 '+place+' 名';
@@ -1624,11 +1711,11 @@ function finishGame(){
   $('#resRank').innerHTML=rank.map((e,i)=>`<div class="rk${e===pl?' me':''}"><span class="no">${i+1}</span><span class="dot" style="background:${e.c.fill}"></span><span class="nm">${e.name}</span><span class="pc">${(g.cnt[e.id]/g.playable*100).toFixed(1)}%</span></div>`).join('');
   const nb=$('#resNew');nb.innerHTML='';
   fresh.forEach(id=>{
-    const h=HAMS.find(x=>x.id===id),c=COS.find(x=>x.id===id),w=document.createElement('div');
+    const h=HAM_MAP.get(id),c=COS.find(x=>x.id===id),w=document.createElement('div'),rr=rarOf(h||c);
     w.style.cssText='display:flex;align-items:center;gap:6px';
     const cvs=document.createElement('canvas');cvs.width=cvs.height=128;
     cvs.getContext('2d').drawImage(h?getSprite(h.id,'none','f'):getSprite(save.ham,c.id,'f'),0,0);
-    w.appendChild(cvs);const s=document.createElement('span');s.innerHTML=(h?h.full:c.name)+' <span class="badge">NEW</span>';w.appendChild(s);nb.appendChild(w);
+    w.appendChild(cvs);const s=document.createElement('span');s.innerHTML=(h?h.full:c.name)+' <span class="badge" style="background:'+rr.c+'">'+rr.n+'</span>';w.appendChild(s);nb.appendChild(w);
   });
   $('#resNewCard').style.display=fresh.length?'block':'none';
   $('#resCoin').innerHTML='🪙 +'+earned+' 金幣　<small>（持有 '+save.coins+'）</small>';
@@ -1672,21 +1759,33 @@ function renderShop(){
     return `<div class="up"><div class="ic">${u.icon}</div><div class="tx"><div class="nm">${u.name}</div><div class="ds">${u.desc(l)}${maxed?'':`<br><span class="nx">下一級：${u.nxt(l)}</span>`}</div><div class="pips">${pips}</div></div><button class="btn sm${can?' sun':''}" data-u="${u.id}" ${can?'':'disabled'}>${maxed?'已滿級':'🪙 '+c}</button></div>`;
   }).join('');
 }
-let collTab='ham';
+let collTab='ham',collFilter='all',collPage=0;const PG=24;
+function collItems(){
+  const list=collTab==='ham'?HAMS:COS;
+  let a=list.filter(it=>collFilter==='all'||(collFilter==='own'?isOpen(it):!isOpen(it)));
+  if(collFilter==='all')a=a.slice().sort((x,y)=>(isOpen(y)?1:0)-(isOpen(x)?1:0));
+  return a;
+}
 function renderColl(){
   const h=hamById(save.ham),c=cosById(save.cos);
   paintTo($('#prevC'),h.id,c.id);
   $('#prevName').textContent=h.full;$('#prevSub').textContent='造型：'+c.name;
   const ni=$('#nameIn');if(ni&&document.activeElement!==ni)ni.value=myName(h.id);
+  $('#collCoins').textContent='🪙 '+save.coins;
   document.querySelectorAll('#collTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===collTab));
-  const list=collTab==='ham'?HAMS:COS,grid=$('#collGrid');
-  grid.innerHTML=list.map(it=>{
-    const op=isOpen(it),sel=(collTab==='ham'?save.ham:save.cos)===it.id;
-    return `<button class="hc${op?'':' lock'}${sel?' sel':''}" data-id="${it.id}" ${op?'':'disabled'}><canvas width="128" height="128"></canvas><div class="n">${collTab==='ham'?it.full:it.name}</div><small>${op?(sel?'使用中':'已解鎖'):reqText(it)+'<br>'+reqProg(it)}</small></button>`;
-  }).join('');
+  document.querySelectorAll('#collFilter button').forEach(b=>b.classList.toggle('on',b.dataset.f===collFilter));
+  const all=collTab==='ham'?HAMS:COS,items=collItems(),pages=Math.max(1,Math.ceil(items.length/PG));
+  if(collPage>=pages)collPage=pages-1;if(collPage<0)collPage=0;
+  const view=items.slice(collPage*PG,collPage*PG+PG),grid=$('#collGrid');
+  grid.innerHTML=view.map(it=>{
+    const op=isOpen(it),sel=(collTab==='ham'?save.ham:save.cos)===it.id,r=rarOf(it);
+    return `<button class="hc${op?'':' lock'}${sel?' sel':''}" data-id="${it.id}"><canvas width="128" height="128"></canvas><div class="n">${collTab==='ham'?it.full:it.name}</div><div class="rar" style="background:${r.c}">${r.n}</div><small>${op?(sel?'使用中':'已擁有'):'🪙 '+priceOf(it)+(it.req?'<br>'+reqText(it):'')}</small></button>`;
+  }).join('')||'<div class="shopnote">沒有符合的項目</div>';
   grid.querySelectorAll('.hc').forEach((el,i)=>{
-    const it=list[i];paintTo(el.querySelector('canvas'),collTab==='ham'?it.id:save.ham,collTab==='ham'?save.cos:it.id);
+    const it=view[i];paintTo(el.querySelector('canvas'),collTab==='ham'?it.id:save.ham,collTab==='ham'?save.cos:it.id);
   });
+  $('#pgInfo').textContent=(collPage+1)+' / '+pages+'　已擁有 '+all.filter(isOpen).length+'/'+all.length;
+  $('#pgPrev').disabled=collPage<=0;$('#pgNext').disabled=collPage>=pages-1;
 }
 
 /* ---------- wiring ---------- */
@@ -1704,10 +1803,19 @@ $('#shopList').onclick=e=>{const b=e.target.closest('button[data-u]');if(!b||b.d
 $('#bSnd').onclick=()=>{save.muted=!save.muted;persist();renderMenu();ac();};
 $('#diffSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;save.diff=+b.dataset.d;persist();renderScenes();};
 $('#sceneGrid').onclick=e=>{const t=e.target.closest('.tile');if(!t||t.disabled)return;startGame(+t.dataset.i,save.diff);};
-$('#collTabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;collTab=b.dataset.t;renderColl();};
+$('#collTabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;collTab=b.dataset.t;collPage=0;$('#collMsg').textContent='';renderColl();};
+$('#collFilter').onclick=e=>{const b=e.target.closest('button');if(!b)return;collFilter=b.dataset.f;collPage=0;renderColl();};
+$('#pgPrev').onclick=()=>{collPage--;renderColl();};
+$('#pgNext').onclick=()=>{collPage++;renderColl();};
 $('#collGrid').onclick=e=>{
-  const t=e.target.closest('.hc');if(!t||t.disabled)return;
-  if(collTab==='ham')save.ham=t.dataset.id;else save.cos=t.dataset.id;
+  const t=e.target.closest('.hc');if(!t)return;
+  const it=collTab==='ham'?hamById(t.dataset.id):cosById(t.dataset.id),msg=$('#collMsg');
+  if(!isOpen(it)){
+    const p=priceOf(it);
+    if(save.coins<p){msg.textContent='金幣不足，還差 '+(p-save.coins)+' 枚';return;}
+    buyItem(it);msg.textContent='🎉 購買成功：'+(it.full||it.name);try{sfx.item();}catch(_){}
+  }
+  if(collTab==='ham')save.ham=it.id;else save.cos=it.id;
   persist();renderColl();
 };
 $('#bAgain').onclick=()=>startGame(lastRun.si,lastRun.diff);
